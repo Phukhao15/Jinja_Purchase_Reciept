@@ -1,0 +1,150 @@
+<style>
+    body {
+        font-family: "TH Sarabun New", "TH Sarabun", Arial, sans-serif;
+        font-size: 12px;
+        margin: 0;
+        padding: 10px;
+        line-height: 1.3;
+        color: #000;
+    }
+
+    .layout-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 5px;
+    }
+
+    .layout-table td {
+        vertical-align: top;
+        padding: 3px;
+    }
+
+    .custom-section-header {
+        font-size: 12px;
+        padding: 5px;
+        font-weight: bold;
+        margin-bottom: 3px;
+    }   
+
+    .address-box {
+        border: 1px solid #ddd;
+        padding: 8px;
+        margin-bottom: 8px;
+        min-height: 90px;
+        font-size: 12px;
+    }
+
+    .supplier-name, 
+    .warehouse-name {
+        font-weight: bold;
+        font-size: 12px;
+        margin-bottom: 3px;
+        display: block;
+    }
+
+    .tax-id {
+        font-weight: bold;
+        display: block;
+        margin-top: 3px;
+        font-size: 10px;
+    }
+
+    .doc-info-item {
+        margin-bottom: 6px;
+        line-height: 1.4;
+    }
+
+    .address-info-item {
+        margin-bottom: 4px;
+        line-height: 1.3;
+    }
+</style>
+
+<div class="no-break">
+    <!-- Draft Status -->
+    {% if doc.docstatus == 0 %}
+        <div class="draft-status">DRAFT</div>
+    {% endif %}
+
+    <!-- Header Section -->
+    <div class="print-heading">				
+        <h2>
+            <div>Receiving Slip</div>
+            <div><small class="sub-heading">{{ doc.name }}</small></div>
+        </h2>
+    </div>
+
+    <!-- Address Section -->
+    <table class="layout-table">
+        <tr>
+          <!-- Vendor / Purchased From -->
+<td style="width: 50%;"> 
+    <div class="custom-section-header">Purchased From:</div>
+    <div class="address-box">
+        <div class="address-info-item">
+            <span class="supplier-name">{{ doc.supplier_name }}</span>
+        </div>
+        
+        <!-- Address -->
+        <div class="address-info-item">
+            {% if doc.address_display and doc.address_display.startswith('00000') %}
+                {% set modified_address = doc.address_display.replace('00000', 'สำนักงานใหญ่', 1) %}
+                {{ modified_address }}
+            {% elif doc.address_display and doc.address_display.startswith('00001') %}
+                {% set modified_address = doc.address_display.replace('00001', 'สาขาที่ 00001', 1) %}
+                {{ modified_address }}
+            {% else %}
+                {{ doc.address_display }}   
+            {% endif %}
+        </div>
+
+        <!-- Tax ID -->
+        {% set w_tax = frappe.db.get_value('Supplier', doc.supplier,'tax_id') %}
+        <div class="address-info-item">
+            <span class="tax-id">Tax ID: {{ w_tax or "None" }}</span>
+        </div>
+
+        <!-- Warehouse - Always show -->
+        <div class="address-info-item">
+            <span class="warehouse-name">Warehouse: {{ doc.set_warehouse or "Not specified" }}</span>
+        </div>
+    </div>
+</td>
+            
+            <!-- Ship To style, but use Posting Date info -->
+            <td style="width: 50%;">
+                <div class="custom-section-header">Document Info:</div>
+                <div class="address-box">
+                    {% set date_obj = frappe.utils.getdate(doc.posting_date) %}
+                    
+                    <div class="doc-info-item"><strong>Posting Date:</strong> {{ "{:02d}/{:02d}/{}".format(date_obj.day, date_obj.month, date_obj.year) }}</div>
+                    
+                    <div class="doc-info-item"><strong>Currency:</strong> {{ doc.currency }}</div>
+                    
+                    {% if doc.currency != "THB" %}
+                        <div class="doc-info-item"><strong>Exchange Rate:</strong> {{ doc.conversion_rate }}</div>
+                    {% endif %}
+                    
+                    <div class="doc-info-item"><strong>NAV Ref:</strong> {{ doc.nav_ref }}</div>
+                    
+                    {% if doc.sales_order %}
+                        <div class="doc-info-item"><strong>Sales Order:</strong> {{ doc.sales_order }}</div>
+                    {% endif %}
+                    
+                    <div class="doc-info-item"><strong>ERP PO:</strong> 
+                        {% set w_po_no = [""] %}
+                        {% for item in doc.items | sort(attribute='item_code') %}
+                            {% if w_po_no.append(item.purchase_order) %}{% endif %}
+                        {% endfor %}
+                        {{ w_po_no[-1] }}
+                    </div>
+                    
+                    <div class="doc-info-item"><strong>NAV PO:</strong> 
+                        {% set w_po_no_NAV = frappe.db.get_value("Purchase Order", w_po_no[-1], "nav_ref") %}
+                        {{ w_po_no_NAV }}
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+</div>

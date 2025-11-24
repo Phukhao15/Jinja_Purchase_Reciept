@@ -1,0 +1,135 @@
+<style>
+  thead {
+    display: table-header-group;
+  }
+</style>
+{% set sum_qty = [0] %}
+{% set sum_amount = [0] %}
+{% set item_counter = [0] %}
+<table class="table table-bordered table-condensed">
+  <caption><strong>{{ doc.doctype }} Item (Return)</strong></caption>
+  <thead class="repeat table_header">
+    <tr>
+      <th width="5%">No.</th>
+      <th width="25%">Item Code</th>
+      <th width="35%">Description</th>
+      <th width="5%">Qty</th>
+      <th width="15%">Unit Price</th>
+      <th width="15%">Amount</th>
+    </tr>
+  </thead>
+  {% for item in doc.items | sort(attribute='item_code') %}
+    {% if item_counter.append(item_counter[-1] + 1) %}{% endif %}
+    {% set item_brand = frappe.db.get_value('Item', item.item_code, 'brand') %}
+    {% set is_special_item = (item_brand == 'SPH' or item_brand == 'PAL' or item.item_code.upper().startswith('HW')) %}
+    
+    {% if item.qty > 40 and is_special_item %}
+      {% set total_batches = (item.qty / 40) | round(0, 'ceil') %}
+      {% set serial_list = item.serial_no.split('\n') if item.serial_no else [] %}
+      
+      {% for batch_index in range(total_batches | int) %}
+        {% set start_serial = batch_index * 40 %}
+        {% set end_serial = start_serial + 40 %}
+        {% if end_serial > item.qty %}
+          {% set end_serial = item.qty %}
+        {% endif %}
+        {% set batch_qty = end_serial - start_serial %}
+        
+        <tr class="item-break">
+          <td style="text-align:center">
+            {% if batch_index == 0 %}{{ item_counter[-1] }}{% endif %}
+          </td>
+          <td>
+            {% if batch_index == 0 %}{{ item.item_code }}{% endif %}
+          </td>
+          <td>
+            {% if batch_index == 0 %}{{ item.description }}{% endif %}
+          </td>
+          <td style="text-align:center;">
+            {% if batch_index == 0 %}{{ item.qty }}{% endif %}
+          </td>
+          <td style="text-align:right">
+            {% if batch_index == 0 %}{{ frappe.utils.fmt_money(item.base_net_rate) }}{% endif %}
+          </td>
+          <td style="text-align:right;">
+            {% if batch_index == 0 %}{{ frappe.utils.fmt_money(item.base_amount) }}{% endif %}
+          </td>
+        </tr>
+        
+        <tr class="item-group">
+          <td></td>
+          <td style="text-align:right; width:10%">Returned Serial</td>
+          <td colspan="4" style="width:90%">
+            <div class="serial-content">
+              {% if (item_brand == 'SPH' or item_brand == 'PAL' or item.item_code.upper().startswith('HW')) and serial_list %}
+                {% for serial_idx in range(start_serial, end_serial) %}
+                  {% if serial_idx < serial_list | length %}
+                    {% set serial = serial_list[serial_idx] %}
+                    {% if serial.strip() %}
+                      {% set display_idx = serial_idx - start_serial %}
+                      {% if display_idx > 0 and display_idx % 15 == 0 %}<br>{% endif %}
+                      <span>{{ serial.strip() }}</span>
+                      {% if serial_idx < end_serial - 1 %}, {% endif %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        <tr class="item-group">
+          <td></td>
+          <td style="text-align:right; width:10%">Batch</td>
+          <td colspan="4" style="width:90%">
+            {% if item.batch_no and batch_index == 0 %}
+              {{ item.batch_no }}
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    {% else %}
+      <tr class="item-break">
+        <td style="text-align:center">{{ item_counter[-1] }}</td>
+        <td>{{ item.item_code }}</td>
+        <td>{{ item.description }}</td>
+        <td style="text-align:center;">{{ item.qty }}</td>
+        <td style="text-align:right">{{ frappe.utils.fmt_money(item.base_net_rate) }}</td>
+        <td style="text-align:right;">{{ frappe.utils.fmt_money(item.base_amount) }}</td>
+      </tr>
+      <tr class="item-group">
+        <td></td>
+        <td style="text-align:right; width:10%">Serial No</td>
+        <td colspan="4" style="width:90%">
+          <div class="serial-content">
+            {% if (item_brand == 'SPH' or item_brand == 'PAL' or item.item_code.upper().startswith('HW')) and item.serial_no %}
+              {% set serial_list = item.serial_no.split('\n') %}
+              {% for serial in serial_list %}
+                {% if serial.strip() %}
+                  {% if loop.index0 > 0 and loop.index0 % 15 == 0 %}<br>{% endif %}
+                  <span>{{ serial.strip() }}</span>{% if not loop.last %}, {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      <tr class="item-group">
+        <td></td>
+        <td style="text-align:right; width:10%">Batch</td>
+        <td colspan="4" style="width:90%">
+          {% if item.batch_no %}
+            {{ item.batch_no }}
+          {% endif %}
+        </td>
+      </tr>
+    {% endif %}
+    {% if sum_qty.append(sum_qty[-1] + item.qty) %}{% endif %}
+    {% if sum_amount.append(sum_amount[-1] + item.base_amount) %}{% endif %}
+  {% endfor %}
+  <!-- Total Row -->
+  <tr>
+    <td colspan="4" style="text-align:right"><strong>Total</strong></td>
+    <td style="text-align:center;"><strong>{{ sum_qty[-1] }}</strong></td>
+    <td style="text-align:right;"><strong>{{ frappe.utils.fmt_money(sum_amount[-1]) }}</strong></td>
+  </tr>
+</table>
