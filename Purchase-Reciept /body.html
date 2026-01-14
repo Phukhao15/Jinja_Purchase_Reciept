@@ -2,11 +2,33 @@
   thead {
     display: table-header-group;
   }
+
+  tfoot {
+    display: table-row-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* CSS สำหรับซ่อนรอยต่อ เพื่อให้ดูเหมือนเป็นก้อนเดียวกัน */
+  tr.serial-row-continuation td {
+    border-top: none !important;
+    padding-top: 0px !important;
+    padding-bottom: 2px !important;
+  }
+
+  /* ลดช่องว่างของบรรทัดแรกเพื่อให้เนื้อหาต่อกันสนิท */
+  tr.serial-row-start td {
+    padding-bottom: 0px !important;
+    border-bottom: none !important;
+  }
 </style>
 
 {% set sum_qty = [0] %}
 {% set sum_amount = [0] %}
 {% set item_counter = [0] %}
+
 <table class="table table-bordered table-condensed">
   <caption><strong>{{ doc.doctype }} Item</strong></caption>
   <thead class="repeat table_header">
@@ -19,81 +41,82 @@
       <th width="15%">Amount</th>
     </tr>
   </thead>
-  
-  {% for item in doc.items %}
+
+  <tbody>
+    {% for item in doc.items %}
     {% if item_counter.append(item_counter[-1] + 1) %}{% endif %}
 
-    {# --- START: Safe Variables --- #}
+    {# --- Prepare Variables --- #}
     {% set item_code_safe = item.item_code or "" %}
     {% set item_qty_safe = item.qty or 0 %}
+    {% set item_brand = frappe.db.get_value('Item', item_code_safe, 'brand') if item_code_safe else None %}
 
-    {% set item_brand = None %} 
-    {% if item_code_safe %} 
-        {% set item_brand = frappe.db.get_value('Item', item_code_safe, 'brand') %}
+    {# --- Logic รวบรวม Serial เป็น List ก่อน --- #}
+    {% set serial_list = [] %}
+    {% if (item_brand == 'SPH' or item_brand == 'PAL' or item_code_safe.upper().startswith('HW')) and item.serial_no %}
+    {% set raw_serials = (item.serial_no | string).replace(',', '\n').split('\n') %}
+    {% for s in raw_serials %}
+    {% if s.strip() %}
+    {% if serial_list.append(s.strip()) %}{% endif %}
     {% endif %}
-    
-    {% set is_special_item = (item_brand == 'SPH' or item_brand == 'PAL' or item_code_safe.upper().startswith('HW')) %}
-    {# --- END: Safe Variables --- #}
-    
-    
-    {# --- DEBUG V2: บังคับให้ข้าม Logic ที่ซับซ้อน (if) และทดสอบเฉพาะ Logic (else) --- #}
-    {% if False %} 
-      {# --- โค้ดส่วนนี้ (Logic ซับซ้อน) จะถูกข้ามไปทั้งหมด --- #}
-      {# ... Complex logic is skipped ... #}
-      
-    {% else %}
-      {# --- Item ทุกแถวจะถูกบังคับให้มาทำงานในส่วนนี้ (Logic ง่าย) --- #}
-      <tr class="item-break">
-        <td style="text-align:center">{{ item_counter[-1] }}</td>
-        <td>{{ item_code_safe }}</td>
-        <td>{{ item.description }}</td>
-        <td style="text-align:center">{{ item_qty_safe }}</td>
-        <td style="text-align:right">
-          {{ frappe.utils.fmt_money(item.rate or 0, currency=doc.currency) }}
-        </td>
-       <td style="text-align:right">
-         {{ frappe.utils.fmt_money(item.amount or 0, currency=doc.currency) }}
-       </td>
-      </tr>
-
-      <tr class="item-group">
-        <td></td>
-        <td style="text-align:right; width:10%">Serial No</td>
-        <td colspan="4" style="width:90%">
-          <div class="serial-content">
-            {% if (item_brand == 'SPH' or item_brand == 'PAL' or item_code_safe.upper().startswith('HW')) and item.serial_no %}
-              {% set serial_list = (item.serial_no | string).split('\n') %}
-              {% for serial in serial_list %}
-                {% if serial.strip() %}
-                  {% if loop.index0 > 0 and loop.index0 % 15 == 0 %}<br>{% endif %}
-                  {{ serial.strip() }}{% if not loop.last %}, {% endif %}
-                {% endif %}
-              {% endfor %}
-            {% endif %}
-          </div>
-        </td>
-      </tr>
-
-      <tr class="item-group">
-        <td></td>
-        <td style="text-align:right; width:10%">Batch</td>
-        <td colspan="4" style="width:90%">
-          {% if item.batch_no %}
-            {{ item.batch_no }}
-          {% endif %}
-        </td>
-      </tr>
+    {% endfor %}
     {% endif %}
-    
+
+    {# --- ส่วนแสดงผล Item หลัก --- #}
+    <tr class="item-break">
+      <td style="text-align:center">{{ item_counter[-1] }}</td>
+      <td>{{ item_code_safe }}</td>
+      <td>{{ item.description }}</td>
+      <td style="text-align:center">{{ item_qty_safe }}</td>
+      <td style="text-align:right">{{ frappe.utils.fmt_money(item.rate or 0, currency=doc.currency) }}</td>
+      <td style="text-align:right">{{ frappe.utils.fmt_money(item.amount or 0, currency=doc.currency) }}</td>
+    </tr>
+
+    {# --- ส่วนแสดงผล Serial (แบบตัดแบ่งแถว) --- #}
+    {% if serial_list %}
+    {# กำหนดจำนวน Serial ต่อ 1 แถว (แนะนำ 20-30 ตัว เพื่อความปลอดภัยในการตัดหน้า) #}
+    {% set chunk_size = 25 %}
+
+    {# วนลูปสร้างแถวทีละชุด #}
+    {% for i in range(0, serial_list|length, chunk_size) %}
+    <tr class="item-group {% if i == 0 %}serial-row-start{% else %}serial-row-continuation{% endif %}">
+      <td></td> {# ช่อง Label: แสดงคำว่า Serial No แค่ครั้งแรก #}
+      <td style="text-align:right; vertical-align: top; color: #555;">
+        {% if i == 0 %}<strong>Serial No</strong>{% endif %}
+      </td>
+
+      {# ช่อง Data: colspan 4 เหมือนเดิม แต่ใส่แค่ทีละชุด #}
+      <td colspan="4" style="width:90%; text-align: left; vertical-align: top;">
+        <div class="serial-content">
+          {{ serial_list[i : i + chunk_size] | join(', ') }}
+          {# ใส่ลูกน้ำปิดท้าย ถ้าไม่ใช่ชุดสุดท้าย #}
+          {% if i + chunk_size < serial_list|length %},{% endif %} </div>
+      </td>
+    </tr>
+    {% endfor %}
+    {% endif %}
+
+    {# --- ส่วนแสดงผล Batch (ถ้ามี) --- #}
+    {% if item.batch_no %}
+    <tr class="item-group">
+      <td></td>
+      <td style="text-align:right; width:10%">Batch</td>
+      <td colspan="4" style="width:90%">
+        {{ item.batch_no }}
+      </td>
+    </tr>
+    {% endif %}
+
     {% if sum_qty.append(sum_qty[-1] + item_qty_safe) %}{% endif %}
     {% if sum_amount.append(sum_amount[-1] + (item.amount or 0)) %}{% endif %}
-  {% endfor %}
+    {% endfor %}
+  </tbody>
 
   <tr>
     <td colspan="3" style="text-align:right"><strong>Total</strong></td>
     <td style="text-align:center"><strong>{{ sum_qty[-1] }}</strong></td>
     <td></td>
-   <td style="text-align:right"><strong>{{ frappe.utils.fmt_money(sum_amount[-1], currency=doc.currency) }}</strong></td>
-
+    <td style="text-align:right"><strong>{{ frappe.utils.fmt_money(sum_amount[-1], currency=doc.currency) }}</strong>
+    </td>
   </tr>
 </table>
